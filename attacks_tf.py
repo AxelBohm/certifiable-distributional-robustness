@@ -22,11 +22,11 @@ import utils_tf
 from tensorflow.python.platform import flags
 FLAGS = flags.FLAGS
 
+
 def wrm(x, preds, y=None, eps=0.3, ord=2, model=None, steps=15):
-  
     """
         TensorFlow implementation of the Wasserstein distributionally
-        adversarial training method. 
+        adversarial training method.
         :param x: the input placeholder
         :param preds: the model's output tensor
         :param y: (optional) A placeholder for the model labels. Only provide
@@ -35,16 +35,16 @@ def wrm(x, preds, y=None, eps=0.3, ord=2, model=None, steps=15):
         labels to avoid the "label leaking" effect (explained in this
         paper: https://arxiv.org/abs/1611.01236). Default is None.
         Labels should be one-hot-encoded.
-        :param eps: .5 / gamma (Lagrange dual parameter) 
+        :param eps: .5 / gamma (Lagrange dual parameter)
         in the ICLR paper (see link above)
         :param ord: (optional) Order of the norm (mimics Numpy).
         Possible values: 2.
         :param model: TF graph model
         :param steps: hwo many gradient ascent steps to take
-        when finding adversarial example 
+        when finding adversarial example
         :return: a tensor for the adversarial example
         """
-    
+
     if y is None:
         # Using model predictions as ground truth to avoid label leaking
         preds_max = tf.reduce_max(preds, 1, keep_dims=True)
@@ -57,7 +57,7 @@ def wrm(x, preds, y=None, eps=0.3, ord=2, model=None, steps=15):
     grad, = tf.gradients(eps*loss, x)
     x_adv = tf.stop_gradient(x+grad)
     x = tf.stop_gradient(x)
-    
+
     for t in xrange(steps):
         loss = utils_tf.model_loss(y, model(x_adv), mean=False)
         grad, = tf.gradients(eps*loss, x_adv)

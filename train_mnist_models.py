@@ -27,6 +27,10 @@ from keras.models import load_model
 from keras.backend import manual_variable_initialization
 from attacks import WassersteinRobustMethod
 
+import os
+os.environ["KMP_WARNINGS"] = "FALSE"  # ignore tf OMP KMP_AFFINITY output
+
+
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('nb_epochs', 25, 'Number of epochs to train model')
@@ -46,6 +50,7 @@ eval_params = {'batch_size': FLAGS.batch_size}
 seed = 12345
 np.random.seed(seed)
 tf.set_random_seed(seed)
+
 
 def main(argv=None):
 
@@ -70,7 +75,7 @@ def main(argv=None):
     model = cnn_model(activation='elu')
     predictions = model(x)
     wrm = WassersteinRobustMethod(model, sess=sess)
-    wrm_params = {'eps': 1.3, 'ord': 2, 'y':y, 'steps': 15}
+    wrm_params = {'eps': 1.3, 'ord': 2, 'y': y, 'steps': 15}
     predictions_adv_wrm = model(wrm.generate(x, **wrm_params))
 
     def evaluate():
@@ -79,15 +84,14 @@ def main(argv=None):
         print('Test accuracy on legitimate test examples: %0.4f' % accuracy)
 
         # Accuracy of the model on Wasserstein adversarial examples
-        accuracy_adv_wass = model_eval(sess, x, y, predictions_adv_wrm, X_test, \
+        accuracy_adv_wass = model_eval(sess, x, y, predictions_adv_wrm, X_test,
                                        Y_test, args=eval_params)
         print('Test accuracy on Wasserstein examples: %0.4f\n' % accuracy_adv_wass)
 
     # Train the model
-    model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate, \
+    model_train(sess, x, y, predictions, X_train, Y_train, evaluate=evaluate,
                 args=train_params, save=False)
     model.model.save(FLAGS.train_dir + '/' + FLAGS.filename_erm)
-
 
     print('')
     print("Repeating the process, using Wasserstein adversarial training")
@@ -96,21 +100,22 @@ def main(argv=None):
     predictions_adv = model_adv(x)
     wrm2 = WassersteinRobustMethod(model_adv, sess=sess)
     predictions_adv_adv_wrm = model_adv(wrm2.generate(x, **wrm_params))
-    
+
     def evaluate_adv():
         # Accuracy of adversarially trained model on legitimate test inputs
         accuracy = model_eval(sess, x, y, predictions_adv, X_test, Y_test, args=eval_params)
         print('Test accuracy on legitimate test examples: %0.4f' % accuracy)
-        
+
         # Accuracy of the adversarially trained model on Wasserstein adversarial examples
-        accuracy_adv_wass = model_eval(sess, x, y, predictions_adv_adv_wrm, \
+        accuracy_adv_wass = model_eval(sess, x, y, predictions_adv_adv_wrm,
                                        X_test, Y_test, args=eval_params)
         print('Test accuracy on Wasserstein examples: %0.4f\n' % accuracy_adv_wass)
 
-    model_train(sess, x, y, predictions_adv_adv_wrm, X_train, Y_train, \
-                predictions_adv=predictions_adv_adv_wrm, evaluate=evaluate_adv, \
+    model_train(sess, x, y, predictions_adv_adv_wrm, X_train, Y_train,
+                predictions_adv=predictions_adv_adv_wrm, evaluate=evaluate_adv,
                 args=train_params, save=False)
     model_adv.model.save(FLAGS.train_dir + '/' + FLAGS.filename_wrm)
+
 
 if __name__ == '__main__':
     app.run()
