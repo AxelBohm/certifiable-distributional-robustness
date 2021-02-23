@@ -33,7 +33,7 @@ os.environ["KMP_WARNINGS"] = "FALSE"  # ignore tf OMP KMP_AFFINITY output
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('nb_epochs', 25, 'Number of epochs to train model')
+flags.DEFINE_integer('nb_epochs', 15, 'Number of epochs to train model')
 flags.DEFINE_integer('batch_size', 256, 'Size of training batches')
 flags.DEFINE_float('learning_rate', 0.001, 'Learning rate for training')
 flags.DEFINE_string('train_dir', '.', 'Training directory')
