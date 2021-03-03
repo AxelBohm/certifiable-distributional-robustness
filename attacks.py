@@ -19,7 +19,7 @@ class Attack:
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, model, back='tf', sess=None):
+    def __init__(self, model, X_train, back='tf', sess=None):
         """
         :param model: A function that takes a symbolic input and returns the
                       symbolic output for the model's predictions.
@@ -41,6 +41,9 @@ class Attack:
         self.back = back
         self.sess = sess
         self.inf_loop = False
+
+        # placeholder for future adversarial examples to be stored as starting values
+        self.x_adv = X_train
 
     def generate(self, x, **kwargs):
         """
@@ -76,13 +79,13 @@ class Attack:
         return True
 
 class WassersteinRobustMethod(Attack):
-    def __init__(self, model, back='tf', sess=None):
+    def __init__(self, model, X_train, nb_batches, back='tf', sess=None):
         super(WassersteinRobustMethod, self).__init__(model, back, sess)
     
     def generate(self, x, **kwargs):
         # Parse and save attack-specific parameters
         assert self.parse_params(**kwargs)
-        return wrm(x, self.model(x), y=self.y, eps=self.eps, ord=self.ord, \
+        return wrm(x, self.x_adv, self.model(x), y=self.y, eps=self.eps, ord=self.ord, \
                    model=self.model, steps=self.steps)
 
     def parse_params(self, eps=0.3, ord=2, y=None, steps=15,**kwargs):

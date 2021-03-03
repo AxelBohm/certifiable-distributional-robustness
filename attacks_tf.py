@@ -23,7 +23,7 @@ from tensorflow.python.platform import flags
 FLAGS = flags.FLAGS
 
 
-def wrm(x, preds, y=None, eps=0.3, ord=2, model=None, steps=15):
+def wrm(x_nat, x_init, preds, y=None, eps=0.3, ord=2, model=None, steps=15):
     """
         TensorFlow implementation of the Wasserstein distributionally
         adversarial training method.
@@ -51,17 +51,21 @@ def wrm(x, preds, y=None, eps=0.3, ord=2, model=None, steps=15):
         y = tf.to_float(tf.equal(preds, preds_max))
     y = y / tf.reduce_sum(y, 1, keep_dims=True)
 
-    # Compute loss
-    loss = utils_tf.model_loss(y, preds, mean=False)
-
-    grad, = tf.gradients(eps*loss, x)
-    x_adv = tf.stop_gradient(x+grad)
-    x = tf.stop_gradient(x)
+    # what is the purpose of these 4 lines??
+    # it seems like they take a gradient ascent step of the objective function (without the lagrangian term)
+    # not sure why this is not incorporated into the loop
+    # loss = utils_tf.model_loss(y, preds, mean=False)
+    # grad, = tf.gradients(eps*loss, x)
+    # # the above two lines compute the derivative of the objective function with respect to the input x
+    # x_adv = tf.stop_gradient(x+grad)
+    # x = tf.stop_gradient(x)
+    x_adv = tf.stop_gradient(x_init)
+    x_nat = tf.stop_gradient(x_nat)
 
     for t in xrange(steps):
         loss = utils_tf.model_loss(y, model(x_adv), mean=False)
         grad, = tf.gradients(eps*loss, x_adv)
-        grad2, = tf.gradients(tf.nn.l2_loss(x_adv-x), x_adv)
+        grad2, = tf.gradients(tf.nn.l2_loss(x_adv-x_nat), x_adv)
         grad = grad - grad2
-        x_adv = tf.stop_gradient(x_adv+1./np.sqrt(t+2)*grad)
+        x_adv = tf.stop_gradient(x_adv+1./np.sqrt(t+1)*grad)
     return x_adv

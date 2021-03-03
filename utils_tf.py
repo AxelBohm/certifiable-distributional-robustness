@@ -63,86 +63,98 @@ def model_loss(y, model, mean=True):
     return out
 
 
-def model_train(sess, x, y, predictions, X_train, Y_train, save=False,
-                predictions_adv=None, evaluate=None, verbose=True, args=None):
-    """
-    Train a TF graph
-    :param sess: TF session to use when training the graph
-    :param x: input placeholder
-    :param y: output placeholder (for labels)
-    :param predictions: model output predictions
-    :param X_train: numpy array with training inputs
-    :param Y_train: numpy array with training outputs
-    :param save: boolean controling the save operation
-    :param predictions_adv: if set with the adversarial example tensor,
-                            will run adversarial training
-    :param args: dict or argparse `Namespace` object.
-                 Should contain `nb_epochs`, `learning_rate`,
-                 `batch_size`
-                 If save is True, should also contain 'train_dir'
-                 and 'filename'
-    :return: True if model trained
-    """
-    args = _FlagsWrapper(args or {})
+class RobustTraining()
 
-    # Check that necessary arguments were given (see doc above)
-    assert args.nb_epochs, "Number of epochs was not given in args dict"
-    assert args.learning_rate, "Learning rate was not given in args dict"
-    assert args.batch_size, "Batch size was not given in args dict"
+    def __init__(self, sess, model, X_train, Y_train):
+        self.sess = sess
+        self.predictions = model
+        self.X_nat = X_train
+        self.Y_nat = Y_train
+        self.X_adv = X_train
 
-    if save:
-        assert args.train_dir, "Directory for save was not given in args dict"
-        assert args.filename, "Filename for save was not given in args dict"
 
-    # Define loss
-    loss = model_loss(y, predictions)
-    if predictions_adv is not None:
-        p = 1.0
-        loss = ((1-p)*loss + p*model_loss(y, predictions_adv))
+    def train(x, y, save=False,
+                    predictions_adv=None, evaluate=None, verbose=True, args=None):
+        args = _FlagsWrapper(args or {})
 
-    train_step = tf.train.AdamOptimizer(learning_rate=args.learning_rate).minimize(loss)
-
-    with sess.as_default():
-        if hasattr(tf, "global_variables_initializer"):
-            tf.global_variables_initializer().run()
-        else:
-            sess.run(tf.initialize_all_variables())
-
-        for epoch in six.moves.xrange(args.nb_epochs):
-            if verbose:
-                print("Epoch " + str(epoch))
-
-            # Compute number of batches
-            nb_batches = int(math.ceil(float(len(X_train)) / args.batch_size))
-            assert nb_batches * args.batch_size >= len(X_train)
-
-            prev = time.time()
-            for batch in range(nb_batches):
-
-                # Compute batch start and end indices
-                start, end = batch_indices(
-                    batch, len(X_train), args.batch_size)
-
-                # Perform one training step
-                train_step.run(feed_dict={x: X_train[start:end],
-                                          y: Y_train[start:end]})
-            assert end >= len(X_train)  # Check that all examples were used
-            cur = time.time()
-            if verbose:
-                print("\tEpoch took " + str(cur - prev) + " seconds")
-            prev = cur
-            if evaluate is not None:
-                evaluate()
+        # Check that necessary arguments were given (see doc above)
+        assert args.nb_epochs, "Number of epochs was not given in args dict"
+        assert args.learning_rate, "Learning rate was not given in args dict"
+        assert args.batch_size, "Batch size was not given in args dict"
 
         if save:
-            save_path = os.path.join(args.train_dir, args.filename)
-            saver = tf.train.Saver()
-            saver.save(sess, save_path)
-            print("Completed model training and saved at:" + str(save_path))
-        else:
-            print("Completed model training.")
+            assert args.train_dir, "Directory for save was not given in args dict"
+            assert args.filename, "Filename for save was not given in args dict"
 
-    return True
+        # Define loss
+        loss = model_loss(y, self.predictions)
+        if predictions_adv is not None:
+            p = 1.0
+            loss = ((1-p)*loss + p*model_loss(y, predictions_adv))
+
+        train_step = tf.train.AdamOptimizer(learning_rate=args.learning_rate).minimize(loss)
+
+        with self.sess.as_default():
+            if hasattr(tf, "global_variables_initializer"):
+                tf.global_variables_initializer().run()
+            else:
+                self.sess.run(tf.initialize_all_variables())
+
+            for epoch in six.moves.xrange(args.nb_epochs):
+                if verbose:
+                    print("Epoch " + str(epoch))
+
+                # Compute number of batches
+                nb_batches = int(math.ceil(float(len(X_train)) / args.batch_size))
+                assert nb_batches * args.batch_size >= len(X_train)
+
+                prev = time.time()
+                for batch in range(nb_batches):
+
+                    # Compute batch start and end indices
+                    start, end = batch_indices(batch, len(X_train), args.batch_size)
+
+                    # update adversarial examples
+                    self.update_adv(start, end)
+                    # Perform one training step (on adversarial examples)
+                    train_step.run(feed_dict={x: X_adv[start:end],
+                                              y: Y_train[start:end]})
+                assert end >= len(X_train)  # Check that all examples were used
+                cur = time.time()
+                if verbose:
+                    print("\tEpoch took " + str(cur - prev) + " seconds")
+                prev = cur
+                if evaluate is not None:
+                    evaluate()
+
+            if save:
+                save_path = os.path.join(args.train_dir, args.filename)
+                saver = tf.train.Saver()
+                saver.save(sess, save_path)
+                print("Completed model training and saved at:" + str(save_path))
+            else:
+                print("Completed model training.")
+
+        return True
+        
+        
+    def update_adv(self, start, end, preds, y=None, eps=0.3, ord=2, model=None, steps=15):
+        y = y / tf.reduce_sum(y, 1, keep_dims=True)
+
+        x_adv = tf.stop_gradient(self.X_adv[start:end])
+        x_nat = tf.stop_gradient(self.X_nat[start:end])
+
+        for t in xrange(steps):
+            loss = model_loss(y, model(x_adv), mean=False)
+            grad, = tf.gradients(eps*loss, x_adv)
+            grad2, = tf.gradients(tf.nn.l2_loss(x_adv-x_nat), x_adv)
+            grad = grad - grad2
+            x_adv = tf.stop_gradient(x_adv+1./np.sqrt(t+1)*grad)
+
+        # return x_adv
+        self.X_adv[start:end] = x_adv
+
+
 
 
 def model_eval(sess, x, y, model, X_test, Y_test, args=None):
